@@ -1,25 +1,20 @@
+---
 docker_kernel_min_version: '0'
 
-# https://docs.docker.com/engine/installation/linux/fedora/#install-from-a-package
-# https://download.docker.com/linux/fedora/7/x86_64/stable/
-# the package names below are guesses;
-# docs mention `sudo dnf config-manager --enable docker-ce-edge` for edge
+# https://docs.docker.com/install/linux/docker-ce/fedora/
+
 docker_versioned_pkg:
-  'latest': docker
-  '1.11': docker-1:1.11.2
-  '1.12': docker-1:1.12.5
-  'stable': docker-ce
-  'edge': docker-ce-edge
+  'latest': docker-ce
+  '18.03': docker-ce-18.03.1.ce-3.fc28
+  '18.06': docker-ce-18.06.1.ce-3.fc28
+
+#
+# This is due to the fact that the docker
+# packages available on Fedora are too recent
+#
+docker_version: "latest"
 
 docker_package_info:
   pkg_mgr: dnf
   pkgs:
     - name: "{{ docker_versioned_pkg[docker_version | string] }}"
-
-docker_repo_key_info:
-  pkg_key: ''
-  repo_keys: []
-
-docker_repo_info:
-  pkg_repo: ''
-  repos: []

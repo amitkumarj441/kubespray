@@ -1,4 +1,6 @@
 ---
+vault_bootstrap: false
+vault_deployment_type: docker
 
 vault_adduser_vars:
   comment: "Hashicorp Vault User"
@@ -6,44 +8,27 @@ vault_adduser_vars:
   name: vault
   shell: /sbin/nologin
   system: yes
+
+# This variables redefined in kubespray-defaults for using shared tasks
+# in etcd and kubernetes/secrets roles
 vault_base_dir: /etc/vault
-# https://releases.hashicorp.com/vault/0.6.4/vault_0.6.4_SHA256SUMS
-vault_binary_checksum: 04d87dd553aed59f3fe316222217a8d8777f40115a115dac4d88fac1611c51a6
-vault_bootstrap: false
-vault_ca_options:
-  common_name: kube-cluster-ca
-  format: pem
-  ttl: 87600h
 vault_cert_dir: "{{ vault_base_dir }}/ssl"
-vault_client_headers:
-  Accept: "application/json"
-  Content-Type: "application/json"
-vault_config:
-  backend:
-    etcd:
-      address: "{{ vault_etcd_url }}"
-      ha_enabled: "true"
-      redirect_addr: "https://{{ ansible_default_ipv4.address }}:{{ vault_port }}"
-      tls_ca_file: "{{ vault_cert_dir }}/ca.pem"
-  cluster_name: "kubernetes-vault"
-  default_lease_ttl: "{{ vault_default_lease_ttl }}"
-  listener:
-    tcp:
-      address: "0.0.0.0:{{ vault_port }}"
-      tls_cert_file: "{{ vault_cert_dir }}/api.pem"
-      tls_key_file: "{{ vault_cert_dir }}/api-key.pem"
-  max_lease_ttl: "{{ vault_max_lease_ttl }}"
 vault_config_dir: "{{ vault_base_dir }}/config"
-vault_container_name: kube-hashicorp-vault
-# This variable is meant to match the GID of vault inside Hashicorp's official Vault Container
-vault_default_lease_ttl: 720h
-vault_default_role_permissions:
-  allow_any_name: true
-vault_deployment_type: docker
-vault_download_url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_amd64.zip"
+vault_roles_dir: "{{ vault_base_dir }}/roles"
+vault_secrets_dir: "{{ vault_base_dir }}/secrets"
+vault_lib_dir: "/var/lib/vault"
+vault_log_dir: "/var/log/vault"
+
+vault_version: 0.10.1
+vault_binary_checksum: 66f0f1b0b221d664dd5913f8697409d7401df4bb2a19c7277e8fbad152063fae
+vault_download_url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_{{ image_arch }}.zip"
+
+# Arch of Docker images and needed packages
+image_arch: "{{host_architecture}}"
+
 vault_download_vars:
   container: "{{ vault_deployment_type != 'host' }}"
-  dest: "vault/vault_{{ vault_version }}_linux_amd64.zip"
+  dest: "vault/vault_{{ vault_version }}_linux_{{ image_arch }}.zip"
   enabled: true
   mode: "0755"
   owner: "vault"
@@ -54,37 +39,159 @@ vault_download_vars:
   unarchive: true
   url: "{{ vault_download_url }}"
   version: "{{ vault_version }}"
-vault_etcd_url: "https://{{ hostvars[groups.etcd[0]]['ansible_default_ipv4']['address'] }}:2379"
+
+vault_container_name: kube-hashicorp-vault
+vault_temp_container_name: vault-temp
 vault_image_repo: "vault"
 vault_image_tag: "{{ vault_version }}"
-vault_log_dir: "/var/log/vault"
-vault_max_lease_ttl: 87600h
-vault_needs_gen: false
+
+vault_bind_address: 0.0.0.0
 vault_port: 8200
-# Although "cert" is an option, ansible has no way to auth via cert until
-# upstream merges: https://github.com/ansible/ansible/pull/18141
-vault_role_auth_method: userpass 
-vault_roles:
-  - name: etcd
-    group: etcd
-    policy_rules: default
-    role_options: default
-  - name: kube
-    group: k8s-cluster
-    policy_rules: default
-    role_options: default
-vault_roles_dir: "{{ vault_base_dir }}/roles"
-vault_secret_shares: 1
-vault_secret_threshold: 1
-vault_secrets_dir: "{{ vault_base_dir }}/secrets"
+vault_etcd_url: "{{ etcd_access_addresses }}"
+
+# By default lease
+vault_default_lease_ttl: 70080h
+vault_max_lease_ttl: 87600h
+
 vault_temp_config:
-  default_lease_ttl: "{{ vault_default_lease_ttl }}"
   backend:
     file:
       path: /vault/file
+  default_lease_ttl: "{{ vault_default_lease_ttl }}"
   listener:
     tcp:
-      address: "0.0.0.0:{{ vault_port }}"
+      address: "{{ vault_bind_address }}:{{ vault_port }}"
       tls_disable: "true"
-vault_temp_container_name: vault-temp
-vault_version: 0.6.4
+  max_lease_ttl: "{{ vault_max_lease_ttl }}"
+
+vault_config:
+  backend:
+    etcd:
+      address: "{{ vault_etcd_url }}"
+      ha_enabled: "true"
+      redirect_addr: "https://{{ inventory_hostname }}:{{ vault_port }}"
+      tls_ca_file: "{{ etcd_cert_dir }}/ca.pem"
+      tls_cert_file: "{{ etcd_cert_dir}}/node-{{ inventory_hostname }}.pem"
+      tls_key_file: "{{ etcd_cert_dir}}/node-{{ inventory_hostname }}-key.pem"
+  cluster_name: "kubernetes-vault"
+  default_lease_ttl: "{{ vault_default_lease_ttl }}"
+  max_lease_ttl: "{{ vault_max_lease_ttl }}"
+  ui: "true"
+  listener:
+    tcp:
+      address: "{{ vault_bind_address }}:{{ vault_port }}"
+      tls_cert_file: "{{ vault_cert_dir }}/api.pem"
+      tls_key_file: "{{ vault_cert_dir }}/api-key.pem"
+
+vault_secret_shares: 1
+vault_secret_threshold: 1
+
+vault_successful_http_codes: ["200", "429", "500", "501", "503"]
+
+vault_ca_options:
+  vault:
+    common_name: vault
+    format: pem
+    ttl: "{{ vault_max_lease_ttl }}"
+    exclude_cn_from_sans: true
+    alt_names: "vault.kube-system.svc.{{ dns_domain }},vault.kube-system.svc,vault.kube-system,vault"
+  etcd:
+    common_name: etcd
+    format: pem
+    ttl: "{{ vault_max_lease_ttl }}"
+    exclude_cn_from_sans: true
+  kube:
+    common_name: kube
+    format: pem
+    ttl: "{{ vault_max_lease_ttl }}"
+    exclude_cn_from_sans: true
+
+vault_client_headers:
+  Accept: "application/json"
+  Content-Type: "application/json"
+
+etcd_cert_dir: /etc/ssl/etcd/ssl
+kube_cert_dir: /etc/kubernetes/ssl
+
+vault_pki_mounts:
+  userpass:
+    name: userpass
+    default_lease_ttl: "{{ vault_default_lease_ttl }}"
+    max_lease_ttl: "{{ vault_max_lease_ttl }}"
+    description: "Userpass"
+    cert_dir: "{{ vault_cert_dir }}"
+    roles:
+      - name: userpass
+        group: userpass
+        password: "{{ lookup('password', credentials_dir + '/vault/userpass.creds length=15') }}"
+        policy_rules: default
+        role_options:
+          allow_any_name: true
+
+  vault:
+    name: vault
+    default_lease_ttl: "{{ vault_default_lease_ttl }}"
+    max_lease_ttl: "{{ vault_max_lease_ttl }}"
+    description: "Vault Root CA"
+    cert_dir: "{{ vault_cert_dir }}"
+    roles:
+      - name: vault
+        group: vault
+        password: "{{ lookup('password', credentials_dir + '/vault/vault.creds length=15') }}"
+        policy_rules: default
+        role_options:
+          allow_any_name: true
+  etcd:
+    name: etcd
+    default_lease_ttl: "{{ vault_default_lease_ttl }}"
+    max_lease_ttl: "{{ vault_max_lease_ttl }}"
+    description: "Etcd Root CA"
+    cert_dir: "{{ etcd_cert_dir }}"
+    roles:
+      - name: etcd
+        group: etcd
+        password: "{{ lookup('password', credentials_dir + '/vault/etcd.creds length=15') }}"
+        policy_rules: default
+        role_options:
+          allow_any_name: true
+          enforce_hostnames: false
+          organization: "kube:etcd"
+  kube:
+    name: kube
+    default_lease_ttl: "{{ vault_default_lease_ttl }}"
+    max_lease_ttl: "{{ vault_max_lease_ttl }}"
+    description: "Kubernetes Root CA"
+    cert_dir: "{{ kube_cert_dir }}"
+    roles:
+      - name: kube-master
+        group: kube-master
+        password: "{{ lookup('password', credentials_dir + '/vault/kube-master.creds length=15') }}"
+        policy_rules: default
+        role_options:
+          allow_any_name: true
+          enforce_hostnames: false
+          organization: "system:masters"
+      - name: front-proxy-client
+        group: kube-master
+        password: "{{ lookup('password', credentials_dir + '/vault/kube-proxy.creds length=15') }}"
+        policy_rules: default
+        role_options:
+          allow_any_name: true
+          enforce_hostnames: false
+          organization: "system:front-proxy-client"
+      - name: kube-node
+        group: k8s-cluster
+        password: "{{ lookup('password', credentials_dir + '/vault/kube-node.creds length=15') }}"
+        policy_rules: default
+        role_options:
+          allow_any_name: true
+          enforce_hostnames: false
+          organization: "system:nodes"
+      - name: kube-proxy
+        group: k8s-cluster
+        password: "{{ lookup('password', credentials_dir + '/vault/kube-proxy.creds length=15') }}"
+        policy_rules: default
+        role_options:
+          allow_any_name: true
+          enforce_hostnames: false
+          organization: "system:node-proxier"

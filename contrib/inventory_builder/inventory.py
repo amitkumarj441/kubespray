@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -41,7 +41,7 @@ import re
 import sys
 
 ROLES = ['all', 'kube-master', 'kube-node', 'etcd', 'k8s-cluster:children',
-         'calico-rr']
+         'calico-rr', 'vault']
 PROTECTED_NAMES = ROLES
 AVAILABLE_COMMANDS = ['help', 'print_cfg', 'print_ips', 'load']
 _boolean_states = {'1': True, 'yes': True, 'true': True, 'on': True,
@@ -54,7 +54,7 @@ def get_var_as_bool(name, default):
 
 # Configurable as shell vars start
 
-CONFIG_FILE = os.environ.get("CONFIG_FILE", "./inventory.cfg")
+CONFIG_FILE = os.environ.get("CONFIG_FILE", "./inventory/sample/hosts.ini")
 # Reconfigures cluster distribution at scale
 SCALE_THRESHOLD = int(os.environ.get("SCALE_THRESHOLD", 50))
 MASSIVE_SCALE_THRESHOLD = int(os.environ.get("SCALE_THRESHOLD", 200))
@@ -250,6 +250,7 @@ class KubesprayInventory(object):
     def set_etcd(self, hosts):
         for host in hosts:
             self.add_host_to_group('etcd', host)
+            self.add_host_to_group('vault', host)
 
     def load_file(self, files=None):
         '''Directly loads JSON, or YAML file to inventory.'''
@@ -317,7 +318,7 @@ Delete a host by id: inventory.py -node1
 
 Configurable env vars:
 DEBUG                   Enable debug printing. Default: True
-CONFIG_FILE             File to write config to Default: ./inventory.cfg
+CONFIG_FILE             File to write config to Default: ./inventory/sample/hosts.ini
 HOST_PREFIX             Host prefix for generated hosts. Default: node
 SCALE_THRESHOLD         Separate ETCD role if # of nodes >= 50
 MASSIVE_SCALE_THRESHOLD Separate K8s master and ETCD if # of nodes >= 200
